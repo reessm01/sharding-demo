@@ -153,6 +153,7 @@ class ShardHandler(object):
         data = self.mapping.get(shardnum)
         if not data:
             return f"Invalid shard ID. Valid shard IDs: {self.mapping.keys()}"
+        return f"Shard {shardnum}: {data}"
 
     def get_all_shard_data(self):
         """A helper function to view the mapping data."""
