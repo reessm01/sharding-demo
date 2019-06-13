@@ -118,10 +118,26 @@ class ShardHandler(object):
         pass
 
     def remove_replication(self):
-        """Remove a replication level.
+        """Remove the highest replication level.
 
         If there are only primary files left, remove_replication should raise
-        an exception stating that there is nothing left to remove."""
+        an exception stating that there is nothing left to remove.
+
+        For example:
+
+        1.txt (shard 1, primary)
+        1-1.txt (shard 1, replication 1)
+        1-2.txt (shard 1, replication 2)
+        2.txt (shard 2, primary)
+        etc...
+
+        to:
+
+        1.txt (shard 1, primary)
+        1-1.txt (shard 1, replication 1)
+        2.txt (shard 2, primary)
+        etc...
+        """
         pass
 
     def sync_replication(self):
