@@ -95,12 +95,39 @@ class ShardHandler(object):
         self.write_map()
 
     def remove_shard(self):
+        """Loads the data from all shards, removes the extra 'database' file,
+        and writes the new number of shards to disk.
+        """
         pass
 
     def add_replication(self):
+        """Add a level of replication so that each shard has a backup. Label
+        them with the following format:
+
+        1.txt (shard 1, primary)
+        1-1.txt (shard 1, replication 1)
+        1-2.txt (shard 1, replication 2)
+        2.txt (shard 2, primary)
+        2-1.txt (shard 2, replication 1)
+        ...etc.
+
+        By default, there is no replication -- add_replication should be able
+        to detect how many levels there are and appropriately add the next
+        level.
+        """
         pass
 
     def remove_replication(self):
+        """Remove a replication level.
+
+        If there are only primary files left, remove_replication should raise
+        an exception stating that there is nothing left to remove."""
+        pass
+
+    def sync_replication(self):
+        """Verify that all replications are equal to their primaries and that
+         any missing primaries are appropriately recreated from their
+         replications."""
         pass
 
     def get_shard_data(self, shardnum=None):
