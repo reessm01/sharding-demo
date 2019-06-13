@@ -18,16 +18,21 @@ class ShardHandler(object):
     mapfile = "mapping.json"
 
     def write_map(self):
+        """Write the current 'database' mapping to file."""
         with open(self.mapfile, 'w') as m:
             json.dump(self.mapping, m, indent=2)
 
     def load_map(self):
+        """Load the 'database' mapping from file."""
         if not os.path.exists(self.mapfile):
             return dict()
         with open(self.mapfile, 'r') as m:
             return json.load(m)
 
     def build_shards(self, count, data=None):
+        """Initialize our miniature databases from a clean mapfile. Cannot
+        be called if there is an existing mapping -- must use add_shard() or
+        remove_shard()."""
         if self.mapping != {}:
             return "Cannot build shard setup -- sharding already exists."
 
@@ -39,6 +44,10 @@ class ShardHandler(object):
         self.write_map()
 
     def _write_shard(self, num, data):
+        """Write an individual database shard to disk and add it to the
+        mapping."""
+        if not os.path.exists("data"):
+            os.mkdir("data")
         with open(f"data/{num}.txt", 'w') as s:
             s.write(data)
 
@@ -52,7 +61,7 @@ class ShardHandler(object):
         )
 
     def _generate_sharded_data(self, count, data):
-        """Split the data into as many pieces as the count."""
+        """Split the data into as many pieces as needed."""
         splicenum, rem = divmod(len(data), count)
 
         result = [data[splicenum * z:splicenum * (z + 1)] for z in range(count)]
@@ -63,6 +72,7 @@ class ShardHandler(object):
         return result
 
     def load_data_from_shards(self):
+        """Grab all the shards, pull all the data, and then concatenate it."""
         result = list()
 
         for db in self.mapping.keys():
@@ -71,6 +81,7 @@ class ShardHandler(object):
         return ''.join(result)
 
     def add_shard(self):
+        """Add a new shard to the existing pool and rebalance the data."""
         self.mapping = self.load_map()
         data = self.load_data_from_shards()
         # why 2? Because we have to compensate for zero indexing
@@ -93,6 +104,7 @@ class ShardHandler(object):
         pass
 
     def get_shard_data(self, shardnum=None):
+        """Return information about a shard from the mapfile."""
         if not shardnum:
             return self.get_all_shard_data()
         data = self.mapping.get(shardnum)
@@ -100,6 +112,7 @@ class ShardHandler(object):
             return f"Invalid shard ID. Valid shard IDs: {self.mapping.keys()}"
 
     def get_all_shard_data(self):
+        """A helper function to view the mapping data."""
         return self.mapping
 
 
