@@ -85,7 +85,9 @@ class ShardHandler(object):
         self.mapping = self.load_map()
         data = self.load_data_from_shards()
         # why 2? Because we have to compensate for zero indexing
-        new_shard_num = str(int(max(list(self.mapping.keys()))) + 2)
+        keys = [int(z) for z in list(self.mapping.keys())]
+        keys.sort()
+        new_shard_num = str(max(keys) + 2)
 
         spliced_data = self._generate_sharded_data(int(new_shard_num), data)
 
