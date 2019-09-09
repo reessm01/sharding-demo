@@ -1,35 +1,45 @@
-import os, json
+import json
+import os
+from shutil import copyfile
+from typing import List, Dict
 
 filename = "chapter2.txt"
 
-def load_data_from_file(path=None):
+
+def load_data_from_file(path=None) -> str:
     with open(path if path else filename, 'r') as f:
         data = f.read()
     return data
+
 
 class ShardHandler(object):
     """
     Take any text file and shard it into X number of files with
     Y number of replications.
     """
+
     def __init__(self):
         self.mapping = self.load_map()
+        self.last_char_position = 0
 
     mapfile = "mapping.json"
 
-    def write_map(self):
+    def write_map(self) -> None:
         """Write the current 'database' mapping to file."""
         with open(self.mapfile, 'w') as m:
             json.dump(self.mapping, m, indent=2)
 
-    def load_map(self):
+    def load_map(self) -> Dict:
         """Load the 'database' mapping from file."""
         if not os.path.exists(self.mapfile):
             return dict()
         with open(self.mapfile, 'r') as m:
             return json.load(m)
 
-    def build_shards(self, count, data=None):
+    def _reset_char_position(self):
+        self.last_char_position = 0
+
+    def build_shards(self, count: int, data: str = None) -> [str, None]:
         """Initialize our miniature databases from a clean mapfile. Cannot
         be called if there is an existing mapping -- must use add_shard() or
         remove_shard()."""
@@ -43,7 +53,7 @@ class ShardHandler(object):
 
         self.write_map()
 
-    def _write_shard(self, num, data):
+    def _write_shard(self, num: int, data: str) -> None:
         """Write an individual database shard to disk and add it to the
         mapping."""
         if not os.path.exists("data"):
@@ -51,16 +61,28 @@ class ShardHandler(object):
         with open(f"data/{num}.txt", 'w') as s:
             s.write(data)
 
+        if num == 0:
+            # We reset it here in case we perform multiple write operations
+            # within the same instantiation of the class. The char position
+            # is used to power the index creation.
+            self._reset_char_position()
+
         self.mapping.update(
             {
                 str(num): {
-                    'start': num * len(data),
-                    'end': (num + 1) * len(data)
+                    'start': (
+                        self.last_char_position if
+                            self.last_char_position == 0 else
+                            self.last_char_position + 1
+                        ),
+                    'end': self.last_char_position + len(data)
                 }
             }
         )
 
-    def _generate_sharded_data(self, count, data):
+        self.last_char_position += len(data)
+
+    def _generate_sharded_data(self, count: int, data: str) -> List[str]:
         """Split the data into as many pieces as needed."""
         splicenum, rem = divmod(len(data), count)
 
@@ -71,7 +93,7 @@ class ShardHandler(object):
 
         return result
 
-    def load_data_from_shards(self):
+    def load_data_from_shards(self) -> str:
         """Grab all the shards, pull all the data, and then concatenate it."""
         result = list()
 
@@ -80,29 +102,31 @@ class ShardHandler(object):
                 result.append(f.read())
         return ''.join(result)
 
-    def add_shard(self):
+    def add_shard(self) -> None:
         """Add a new shard to the existing pool and rebalance the data."""
         self.mapping = self.load_map()
         data = self.load_data_from_shards()
-        # why 2? Because we have to compensate for zero indexing
         keys = [int(z) for z in list(self.mapping.keys())]
         keys.sort()
-        new_shard_num = str(max(keys) + 2)
+        # why 2? Because we have to compensate for zero indexing
+        new_shard_num = max(keys) + 2
 
-        spliced_data = self._generate_sharded_data(int(new_shard_num), data)
+        spliced_data = self._generate_sharded_data(new_shard_num, data)
 
         for num, d in enumerate(spliced_data):
             self._write_shard(num, d)
 
         self.write_map()
 
-    def remove_shard(self):
+        self.sync_replication()
+
+    def remove_shard(self) -> None:
         """Loads the data from all shards, removes the extra 'database' file,
         and writes the new number of shards to disk.
         """
         pass
 
-    def add_replication(self):
+    def add_replication(self) -> None:
         """Add a level of replication so that each shard has a backup. Label
         them with the following format:
 
@@ -119,7 +143,7 @@ class ShardHandler(object):
         """
         pass
 
-    def remove_replication(self):
+    def remove_replication(self) -> None:
         """Remove the highest replication level.
 
         If there are only primary files left, remove_replication should raise
@@ -142,13 +166,13 @@ class ShardHandler(object):
         """
         pass
 
-    def sync_replication(self):
+    def sync_replication(self) -> None:
         """Verify that all replications are equal to their primaries and that
          any missing primaries are appropriately recreated from their
          replications."""
         pass
 
-    def get_shard_data(self, shardnum=None):
+    def get_shard_data(self, shardnum=None) -> [str, Dict]:
         """Return information about a shard from the mapfile."""
         if not shardnum:
             return self.get_all_shard_data()
@@ -157,7 +181,7 @@ class ShardHandler(object):
             return f"Invalid shard ID. Valid shard IDs: {self.mapping.keys()}"
         return f"Shard {shardnum}: {data}"
 
-    def get_all_shard_data(self):
+    def get_all_shard_data(self) -> Dict:
         """A helper function to view the mapping data."""
         return self.mapping
 
