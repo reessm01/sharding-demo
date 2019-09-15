@@ -5,7 +5,6 @@ from typing import List, Dict
 from os import listdir
 from os.path import isfile, join
 import re
-import time
 
 filename = "chapter2.txt"
 
@@ -83,7 +82,6 @@ class ShardHandler(object):
                 }
             }
         )
-        print(self.mapping)
         self.last_char_position += len(data)
 
     def _generate_sharded_data(self, count: int, data: str) -> List[str]:
@@ -134,15 +132,12 @@ class ShardHandler(object):
         target = originals[len(originals)-1]
 
         for f in reps:
-            print(f)
             s_org = f.split('-')[0] + '.txt'
             if target in s_org:
                 os.remove(f'./data/{f}')
 
         os.remove(f'./data/{target}')
-        print(self.mapping)
         self.mapping.pop(key, None)
-        print(self.mapping)
 
     def remove_shard(self) -> None:
         """Loads the data from all shards, removes the extra 'database' file,
@@ -183,12 +178,8 @@ class ShardHandler(object):
         level.
         """
         data = self.load_data_from_shards()
-        file_list = [f for f in listdir('./data/') if isfile(join('./data/', f))]
 
-        originals = [f for f in file_list if '-' not in f]
-        originals = sorted(originals, key=lambda x: int(x[:-4]))
-        reps = [f for f in file_list if '-' in f]
-        reps = sorted(reps, key=lambda x: int(x.split('-')[0]))
+        originals, reps = self._get_orig_and_reps()
 
         if not reps:
             for f in originals:
@@ -232,11 +223,7 @@ class ShardHandler(object):
         """
 
         self.sync_replication()
-        file_list = [f for f in listdir('./data/') if isfile(join('./data/', f))]
-        originals = [f for f in file_list if '-' not in f]
-        originals = sorted(originals, key=lambda x: int(x[:-4]))
-        reps = [f for f in file_list if '-' in f]
-        reps = sorted(reps, key=lambda x: int(x.split('-')[0]))
+        originals, reps = self._get_orig_and_reps()
 
         try:
             max_rep = max(list(map(lambda x: int(x.split('-')[1][:-4]), reps)))
@@ -250,22 +237,16 @@ class ShardHandler(object):
                 os.remove(path)
         else:
             raise Exception('Only originals found.')
-
-    def sync_replication(self) -> None:
-        """Verify that all replications are equal to their primaries and that
-         any missing primaries are appropriately recreated from their
-         replications."""
+    
+    def _get_orig_and_reps(self):
         file_list = [f for f in listdir('./data/') if isfile(join('./data/', f))]
-
         originals = [f for f in file_list if '-' not in f]
-        originals = sorted(originals, key=lambda x: int(x[:-4]))
         reps = [f for f in file_list if '-' in f]
-        reps = sorted(reps, key=lambda x: int(x.split('-')[0]))
+        return (sorted(originals, key=lambda x: int(x[:-4])), sorted(reps, key=lambda x: int(x.split('-')[0])))
 
-        int_orig = [int(o[:-4]) for o in originals]
+    def _recreate_missing_originals(self, int_orig, reps):
         orig_missing = []
         for i, o in enumerate(int_orig):
-            print(i, o)
             if i != o:
                 orig_missing.append(i)
         for o in orig_missing:
@@ -276,16 +257,23 @@ class ShardHandler(object):
                         with open(f'data/{o}.txt', 'w+') as s:
                             s.write(data)
 
-        file_list = [f for f in listdir('./data/') if isfile(join('./data/', f))]
-        originals = [f for f in file_list if '-' not in f]
-        originals = sorted(originals, key=lambda x: int(x[:-4]))
-        reps = [f for f in file_list if '-' in f]
-        reps = sorted(reps, key=lambda x: int(x.split('-')[0]))
+    def sync_replication(self) -> None:
+        """Verify that all replications are equal to their primaries and that
+         any missing primaries are appropriately recreated from their
+         replications."""
+
+        originals, reps = self._get_orig_and_reps()      
+        int_orig = [int(o[:-4]) for o in originals]
+        
+        self._recreate_missing_originals(int_orig, reps)
+        
+        originals, reps = self._get_orig_and_reps()
         
         try:
             max_rep = max(list(map(lambda x: int(x.split('-')[1][:-4]), reps)))
         except ValueError:
             max_rep = None
+
         if max_rep:
             for i in range(1, max_rep+1):
                 for f in originals:
