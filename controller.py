@@ -2,6 +2,9 @@ import json
 import os
 from shutil import copyfile
 from typing import List, Dict
+from os import listdir
+from os.path import isfile, join
+import re
 
 filename = "chapter2.txt"
 
@@ -79,7 +82,6 @@ class ShardHandler(object):
                 }
             }
         )
-
         self.last_char_position += len(data)
 
     def _generate_sharded_data(self, count: int, data: str) -> List[str]:
@@ -120,11 +122,45 @@ class ShardHandler(object):
 
         self.sync_replication()
 
+    def _remove_file(self, key) -> None:
+        
+        file_list = [f for f in listdir('./data/') if isfile(join('./data/', f))]
+        originals = [f for f in file_list if '-' not in f]
+        originals = sorted(originals, key=lambda x: int(x[:-4]))
+        reps = [f for f in file_list if '-' in f]
+        reps = sorted(reps, key=lambda x: int(x.split('-')[0]))
+        target = originals[len(originals)-1]
+
+        for f in reps:
+            s_org = f.split('-')[0] + '.txt'
+            if target in s_org:
+                os.remove(f'./data/{f}')
+
+        os.remove(f'./data/{target}')
+        self.mapping.pop(key, None)
+
     def remove_shard(self) -> None:
         """Loads the data from all shards, removes the extra 'database' file,
         and writes the new number of shards to disk.
         """
-        pass
+        self.mapping = self.load_map()
+        data = self.load_data_from_shards()
+        keys = [int(z) for z in list(self.mapping.keys())]
+        keys.sort()
+        # why 2? Because we have to compensate for zero indexing
+        new_shard_num = max(keys)
+
+        spliced_data = self._generate_sharded_data(new_shard_num, data)
+        keys = list(self.mapping.keys())
+        key = keys[len(keys)-1]
+        self._remove_file(key)
+
+        for num, d in enumerate(spliced_data):
+            self._write_shard(num, d)
+
+        self.write_map()
+
+        self.sync_replication()
 
     def add_replication(self) -> None:
         """Add a level of replication so that each shard has a backup. Label
@@ -141,7 +177,28 @@ class ShardHandler(object):
         to detect how many levels there are and appropriately add the next
         level.
         """
-        pass
+        data = self.load_data_from_shards()
+
+        originals, reps = self._get_orig_and_reps()
+
+        if not reps:
+            for f in originals:
+                with open(f'data/{f}', 'r') as _file:
+                    data = _file.read()
+                    name = _file.name[:-4]
+                    filename = f'{name}-1.txt'
+                    with open(filename, 'w+') as s:
+                        s.write(data)
+        else:
+            for f in reps:
+                with open(f'data/{f}', 'r') as _file:
+                    data = _file.read()
+                    num = str(int(_file.name.split('-')[1][:-4]) + 1)
+                    name = f[:-4].split('-')[0]
+                    filename = f'{name}-{num}'
+                    with open(f'./data/{filename}.txt', 'w+') as s:
+                        s.write(data)
+
 
     def remove_replication(self) -> None:
         """Remove the highest replication level.
@@ -164,13 +221,68 @@ class ShardHandler(object):
         2.txt (shard 2, primary)
         etc...
         """
-        pass
+
+        self.sync_replication()
+        originals, reps = self._get_orig_and_reps()
+
+        try:
+            max_rep = max(list(map(lambda x: int(x.split('-')[1][:-4]), reps)))
+        except ValueError:
+            max_rep = None
+
+        if max_rep:
+            for o in originals:
+                name = o[:-4]
+                path = f'data/{name}-{max_rep}.txt'
+                os.remove(path)
+        else:
+            raise Exception('Only originals found.')
+    
+    def _get_orig_and_reps(self):
+        file_list = [f for f in listdir('./data/') if isfile(join('./data/', f))]
+        originals = [f for f in file_list if '-' not in f]
+        reps = [f for f in file_list if '-' in f]
+        return (sorted(originals, key=lambda x: int(x[:-4])), sorted(reps, key=lambda x: int(x.split('-')[0])))
+
+    def _recreate_missing_originals(self, int_orig, reps):
+        orig_missing = []
+        for i, o in enumerate(int_orig):
+            if i != o:
+                orig_missing.append(i)
+        for o in orig_missing:
+            for r in reps:
+                if f'{o}-' in r:
+                    with open(f'data/{r}', 'r') as _file:
+                        data = _file.read()
+                        with open(f'data/{o}.txt', 'w+') as s:
+                            s.write(data)
 
     def sync_replication(self) -> None:
         """Verify that all replications are equal to their primaries and that
          any missing primaries are appropriately recreated from their
          replications."""
-        pass
+
+        originals, reps = self._get_orig_and_reps()      
+        int_orig = [int(o[:-4]) for o in originals]
+        
+        self._recreate_missing_originals(int_orig, reps)
+        
+        originals, reps = self._get_orig_and_reps()
+        
+        try:
+            max_rep = max(list(map(lambda x: int(x.split('-')[1][:-4]), reps)))
+        except ValueError:
+            max_rep = None
+
+        if max_rep:
+            for i in range(1, max_rep+1):
+                for f in originals:
+                    with open(f'data/{f}', 'r') as _file:
+                        data = _file.read()
+                        name = _file.name[:-4]
+                        filename = f'{name}-{i}.txt'
+                        with open(filename, 'w+') as s:
+                            s.write(data)
 
     def get_shard_data(self, shardnum=None) -> [str, Dict]:
         """Return information about a shard from the mapfile."""
@@ -187,11 +299,3 @@ class ShardHandler(object):
 
 
 s = ShardHandler()
-
-s.build_shards(5, load_data_from_file())
-
-print(s.mapping.keys())
-
-s.add_shard()
-
-print(s.mapping.keys())
